@@ -567,7 +567,21 @@ function getCEDEARusd(m) {
 }
 
 // ── IOL API ──────────────────────────────────────────────
-const IOL_BASE = 'https://api.invertironline.com';
+// Proxy local en Vercel — evita el problema de CORS
+const PROXY = '/api';
+
+async function iolTokenRequest(body) {
+  const res = await fetch(`${PROXY}/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error_description || err.error || 'Credenciales inválidas (HTTP ' + res.status + ')');
+  }
+  return res.json();
+}
 
 async function iolLogin() {
   const user = document.getElementById('iol-user').value.trim();
@@ -575,55 +589,41 @@ async function iolLogin() {
   if (!user || !pass) { alert('Ingresá usuario y contraseña'); return; }
   setIolStatus('loading', 'Conectando...');
   try {
-    const res = await fetch(`${IOL_BASE}/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}&grant_type=password`
-    });
-    if (!res.ok) throw new Error('Credenciales inválidas (HTTP ' + res.status + ')');
-    const data = await res.json();
+    const data = await iolTokenRequest(
+      `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}&grant_type=password`
+    );
     iol.accessToken = data.access_token;
     iol.refreshToken = data.refresh_token;
-    iol.tokenExpiry = Date.now() + 14 * 60 * 1000; // 14 min (token dura 15)
+    iol.tokenExpiry = Date.now() + 14 * 60 * 1000;
     iol.connected = true;
     setIolStatus('connected', 'IOL conectado');
     closeModal();
     await refreshPrecios();
   } catch(e) {
-    setIolStatus('disconnected', 'Error: ' + e.message);
-    document.getElementById('update-msg').textContent = e.message.includes('CORS') || e.message.includes('Failed to fetch')
-      ? 'CORS bloqueado (archivo local). Publicá la app en Vercel para usar la API.'
-      : e.message;
+    setIolStatus('error', 'Error de conexión');
+    document.getElementById('update-msg').textContent = e.message;
   }
 }
 
 async function ensureToken() {
   if (!iol.accessToken) throw new Error('No conectado a IOL');
   if (Date.now() > iol.tokenExpiry) {
-    const res = await fetch(`${IOL_BASE}/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `refresh_token=${encodeURIComponent(iol.refreshToken)}&grant_type=refresh_token`
-    });
-    if (!res.ok) throw new Error('Sesión expirada, reconectá');
-    const data = await res.json();
+    const data = await iolTokenRequest(
+      `refresh_token=${encodeURIComponent(iol.refreshToken)}&grant_type=refresh_token`
+    );
     iol.accessToken = data.access_token;
     iol.refreshToken = data.refresh_token;
     iol.tokenExpiry = Date.now() + 14 * 60 * 1000;
   }
 }
 
-// Trae cotización del CEDEAR desde IOL
-// Endpoint: GET /api/v2/Cotizaciones/{mercado}/{instrumento}/{simbolo}
-// Mercado BCBA, instrumento cedears
 async function fetchCotizacionIOL(ticker) {
   await ensureToken();
-  const res = await fetch(`${IOL_BASE}/api/v2/Cotizaciones/BCBA/cedears/${ticker}`, {
+  const res = await fetch(`${PROXY}/cotizacion?mercado=BCBA&instrumento=cedears&simbolo=${ticker}`, {
     headers: { 'Authorization': 'Bearer ' + iol.accessToken }
   });
   if (!res.ok) throw new Error(`${ticker}: HTTP ${res.status}`);
   const data = await res.json();
-  // IOL devuelve: { ultimoPrecio, variacion, apertura, maximo, minimo, ... }
   return data.ultimoPrecio ?? data.ultimo ?? null;
 }
 
