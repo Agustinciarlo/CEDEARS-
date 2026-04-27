@@ -267,7 +267,7 @@ const cedearUSD = m => m.precioCEDEAR_ARS !== null ? m.precioCEDEAR_ARS / state.
 
 // ── BYMA Open Data ────────────────────────────────────────────────────────────
 // Endpoint público sin auth — devuelve todos los CEDEARs de una vez
-const BYMA_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cedears';
+const BYMA_URL = '/api/byma'; // proxy Vercel — evita CORS/405
 
 let bymaCache = null; // cache para evitar múltiples requests
 
