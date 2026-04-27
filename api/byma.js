@@ -1,47 +1,48 @@
+// Proxy para cotización de CEDEARs usando Ambito Financiero
+// Endpoint: mercados.ambito.com/cedear/{ticker}/ajax
+// No requiere autenticación, funciona por ticker individual
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // BYMA Open Data requiere POST con este body exacto
-  const body = JSON.stringify({
-    excludeNoPrice: true,
-    T2: true,
-    T1: false,
-    T0: false,
-    Content: [],
-    Envíos: []
-  });
+  const { ticker } = req.query;
+  if (!ticker) return res.status(400).json({ error: 'Falta parámetro ticker' });
+
+  const sym = ticker.toUpperCase().trim();
 
   try {
-    const response = await fetch(
-      'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cedears',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Origin': 'https://open.bymadata.com.ar',
-          'Referer': 'https://open.bymadata.com.ar/'
-        },
-        body
+    // Ambito devuelve: { fecha, ultimo, variacion, apertura, maximo, minimo, ... }
+    const url = `https://mercados.ambito.com/cedear/${sym}/ajax`;
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'Referer': 'https://www.ambito.com/',
+        'User-Agent': 'Mozilla/5.0 (compatible; CEDEARTracker/1.0)'
       }
-    );
+    });
 
-    const text = await response.text();
+    if (!response.ok) throw new Error(`Ambito HTTP ${response.status} para ${sym}`);
 
-    if (!response.ok) {
-      return res.status(502).json({ error: `BYMA HTTP ${response.status}`, detail: text.slice(0, 300) });
-    }
+    const data = await response.json();
 
-    let data;
-    try { data = JSON.parse(text); } catch(e) {
-      return res.status(502).json({ error: 'Respuesta no JSON de BYMA', detail: text.slice(0, 300) });
-    }
+    // Normalizar: ultimo puede venir como "53.925,00" (string con puntos y comas)
+    const parseAR = str => {
+      if (typeof str === 'number') return str;
+      if (!str) return null;
+      return parseFloat(str.toString().replace(/\./g, '').replace(',', '.'));
+    };
 
-    res.setHeader('Cache-Control', 's-maxage=180, stale-while-revalidate=60');
-    res.status(200).json(data);
+    const precio = parseAR(data.ultimo || data.price || data.last);
+    const variacion = parseAR(data.variacion || data.variation || data.change);
+
+    if (!precio) throw new Error(`Sin precio para ${sym}`);
+
+    res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60');
+    res.status(200).json({ ticker: sym, precio, variacion, fuente: 'ambito' });
+
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
