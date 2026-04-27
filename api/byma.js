@@ -4,22 +4,42 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // BYMA Open Data requiere POST con este body exacto
+  const body = JSON.stringify({
+    excludeNoPrice: true,
+    T2: true,
+    T1: false,
+    T0: false,
+    Content: [],
+    Envíos: []
+  });
+
   try {
     const response = await fetch(
       'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cedears',
       {
+        method: 'POST',
         headers: {
-          'Accept': 'application/json',
           'Content-Type': 'application/json',
-          // BYMA requiere que parezca un browser
-          'User-Agent': 'Mozilla/5.0 (compatible; CEDEARTracker/1.0)',
+          'Accept': 'application/json',
+          'Origin': 'https://open.bymadata.com.ar',
           'Referer': 'https://open.bymadata.com.ar/'
-        }
+        },
+        body
       }
     );
-    if (!response.ok) throw new Error('BYMA HTTP ' + response.status);
-    const data = await response.json();
-    // Cache 3 minutos en Vercel edge
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      return res.status(502).json({ error: `BYMA HTTP ${response.status}`, detail: text.slice(0, 300) });
+    }
+
+    let data;
+    try { data = JSON.parse(text); } catch(e) {
+      return res.status(502).json({ error: 'Respuesta no JSON de BYMA', detail: text.slice(0, 300) });
+    }
+
     res.setHeader('Cache-Control', 's-maxage=180, stale-while-revalidate=60');
     res.status(200).json(data);
   } catch (e) {
