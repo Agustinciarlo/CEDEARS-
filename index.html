@@ -278,9 +278,10 @@ async function fetchBYMA() {
   const json = await res.json();
   // La respuesta es un array de objetos con: symbol, trade, pctChange, etc.
   const map = {};
-  const arr = Array.isArray(json) ? json : (json.data || json.content || []);
+  const arr = Array.isArray(json) ? json : (json.data || json.content || json.Data || []);
   arr.forEach(item => {
-    const sym = (item.symbol || item.ticker || '').replace(/\s/g,'');
+    // symbol puede venir con espacios o con D al final (plazo)
+    const sym = (item.symbol || item.ticker || '').trim().replace(/D$/, '');
     if (sym) map[sym] = item;
   });
   bymaCache = map;
