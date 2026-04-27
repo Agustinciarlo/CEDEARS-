@@ -273,38 +273,40 @@ function setBYMAStatus(st, label) {
   document.getElementById('byma-label').textContent = label;
 }
 
-async function fetchCotizacion(ticker) {
-  const res = await fetch(`/api/byma?ticker=${ticker}`);
+async function fetchCotizacion(ticker, ratio) {
+  // Pasa ratio y CCL actual para que el proxy calcule el precio ARS
+  const url = `/api/byma?ticker=${ticker}&ratio=${ratio}&ccl=${state.ccl}`;
+  const res = await fetch(url);
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || 'HTTP ' + res.status);
-  return json; // { ticker, precio, variacion }
+  return json; // { ticker, precio (ARS), precioUSD, variacion }
 }
 
 async function refreshPrecios() {
   const btn = document.getElementById('refresh-btn');
   btn.textContent = '⟳ Actualizando...';
   btn.disabled = true;
-  setBYMAStatus('loading', 'Ambito...');
+  setBYMAStatus('loading', 'Yahoo...');
   let actualizados = 0;
   const errores = [];
   for (const m of state.mercado) {
     try {
-      const data = await fetchCotizacion(m.ticker);
+      const data = await fetchCotizacion(m.ticker, m.ratio);
       m.precioCEDEAR_ARS = data.precio;
       m.varDia = data.variacion ?? null;
       actualizados++;
     } catch(e) {
-      errores.push(m.ticker);
+      errores.push(m.ticker + ': ' + e.message);
     }
   }
   save();
   const now = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-  if (errores.length) {
-    document.getElementById('update-msg').textContent = `${actualizados} ok · Sin datos: ${errores.join(', ')} · ${now}`;
-    setBYMAStatus(actualizados > 0 ? 'ok' : 'err', 'Ambito');
+  if (errores.length && actualizados === 0) {
+    document.getElementById('update-msg').textContent = `Error: ${errores[0]}`;
+    setBYMAStatus('err', 'Sin datos');
   } else {
     document.getElementById('update-msg').textContent = `${actualizados}/${state.mercado.length} actualizados · ${now}`;
-    setBYMAStatus('ok', 'Ambito ✓');
+    setBYMAStatus('ok', 'Yahoo ✓');
   }
   btn.textContent = '↻ Actualizar precios';
   btn.disabled = false;
