@@ -1,61 +1,50 @@
+// Yahoo Finance — funciona desde servidores sin restricciones
+// Trae el precio del subyacente en USD y calcula el CEDEAR en ARS
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { ticker } = req.query;
-  if (!ticker) return res.status(400).json({ error: 'Falta parámetro ticker' });
-  const sym = ticker.toUpperCase().trim();
+  const { ticker, ratio, ccl } = req.query;
+  if (!ticker) return res.status(400).json({ error: 'Falta ticker' });
 
-  // Convierte strings tipo "53.925,00" o "53925.00" a número
-  const parseAR = v => {
-    if (v === null || v === undefined || v === '') return null;
-    if (typeof v === 'number') return isNaN(v) ? null : v;
-    const s = String(v).trim();
-    // Formato argentino: puntos como miles, coma como decimal
-    const n = parseFloat(s.replace(/\./g, '').replace(',', '.'));
-    return isNaN(n) ? null : n;
-  };
+  const sym    = ticker.toUpperCase().trim();
+  const ratioN = parseFloat(ratio) || 1;
+  const cclN   = parseFloat(ccl)   || 1400;
 
-  // Intenta cada fuente en orden hasta obtener un precio válido
-  const sources = [
-    // Ambito — endpoint directo
-    async () => {
-      const r = await fetch(`https://mercados.ambito.com/cedear/${sym}/ajax`, {
-        headers: { 'Referer': 'https://www.ambito.com/', 'Accept': 'application/json' }
-      });
-      if (!r.ok) throw new Error(`ambito ${r.status}`);
-      const d = await r.json();
-      // Ambito puede devolver array o objeto
-      const obj = Array.isArray(d) ? d[0] : d;
-      const precio = parseAR(obj?.ultimo ?? obj?.last ?? obj?.price ?? obj?.trade ?? obj?.close);
-      const variacion = parseAR(obj?.variacion ?? obj?.variation ?? obj?.change ?? obj?.pct_change);
-      if (!precio) throw new Error('sin precio en respuesta ambito');
-      return { precio, variacion, fuente: 'ambito' };
-    },
-    // Fallback: Rava Bursátil (también público)
-    async () => {
-      const r = await fetch(`https://www.rava.com/perfil/cotizacion.php?e=${sym}&json=1`, {
-        headers: { 'Referer': 'https://www.rava.com/', 'Accept': 'application/json' }
-      });
-      if (!r.ok) throw new Error(`rava ${r.status}`);
-      const d = await r.json();
-      const precio = parseAR(d?.last ?? d?.price ?? d?.ultimo);
-      if (!precio) throw new Error('sin precio en respuesta rava');
-      return { precio, variacion: parseAR(d?.change ?? d?.variacion), fuente: 'rava' };
-    }
-  ];
+  try {
+    // Yahoo Finance v8 — no requiere API key
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=1d`;
+    const r = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      }
+    });
+    if (!r.ok) throw new Error(`Yahoo HTTP ${r.status}`);
+    const data = await r.json();
 
-  for (const source of sources) {
-    try {
-      const result = await source();
-      res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60');
-      return res.status(200).json({ ticker: sym, ...result });
-    } catch (e) {
-      // Siguiente fuente
-    }
+    const meta       = data?.chart?.result?.[0]?.meta;
+    if (!meta) throw new Error('Sin datos de Yahoo');
+
+    const precioUSD  = meta.regularMarketPrice ?? meta.previousClose;
+    const prevUSD    = meta.previousClose ?? precioUSD;
+    const variacion  = prevUSD > 0 ? ((precioUSD - prevUSD) / prevUSD) * 100 : 0;
+
+    // Precio del CEDEAR en ARS = subyacente USD / ratio × CCL
+    const precioARS  = (precioUSD / ratioN) * cclN;
+
+    res.setHeader('Cache-Control', 's-maxage=180, stale-while-revalidate=60');
+    res.status(200).json({
+      ticker:    sym,
+      precio:    Math.round(precioARS * 100) / 100,
+      precioUSD: Math.round(precioUSD * 100) / 100,
+      variacion: Math.round(variacion * 100) / 100,
+      fuente:    'yahoo'
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
   }
-
-  res.status(500).json({ error: `Sin datos para ${sym} en ninguna fuente` });
 }
