@@ -1,7 +1,3 @@
-// Proxy para cotización de CEDEARs usando Ambito Financiero
-// Endpoint: mercados.ambito.com/cedear/{ticker}/ajax
-// No requiere autenticación, funciona por ticker individual
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -10,40 +6,56 @@ export default async function handler(req, res) {
 
   const { ticker } = req.query;
   if (!ticker) return res.status(400).json({ error: 'Falta parámetro ticker' });
-
   const sym = ticker.toUpperCase().trim();
 
-  try {
-    // Ambito devuelve: { fecha, ultimo, variacion, apertura, maximo, minimo, ... }
-    const url = `https://mercados.ambito.com/cedear/${sym}/ajax`;
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'Referer': 'https://www.ambito.com/',
-        'User-Agent': 'Mozilla/5.0 (compatible; CEDEARTracker/1.0)'
-      }
-    });
+  // Convierte strings tipo "53.925,00" o "53925.00" a número
+  const parseAR = v => {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return isNaN(v) ? null : v;
+    const s = String(v).trim();
+    // Formato argentino: puntos como miles, coma como decimal
+    const n = parseFloat(s.replace(/\./g, '').replace(',', '.'));
+    return isNaN(n) ? null : n;
+  };
 
-    if (!response.ok) throw new Error(`Ambito HTTP ${response.status} para ${sym}`);
+  // Intenta cada fuente en orden hasta obtener un precio válido
+  const sources = [
+    // Ambito — endpoint directo
+    async () => {
+      const r = await fetch(`https://mercados.ambito.com/cedear/${sym}/ajax`, {
+        headers: { 'Referer': 'https://www.ambito.com/', 'Accept': 'application/json' }
+      });
+      if (!r.ok) throw new Error(`ambito ${r.status}`);
+      const d = await r.json();
+      // Ambito puede devolver array o objeto
+      const obj = Array.isArray(d) ? d[0] : d;
+      const precio = parseAR(obj?.ultimo ?? obj?.last ?? obj?.price ?? obj?.trade ?? obj?.close);
+      const variacion = parseAR(obj?.variacion ?? obj?.variation ?? obj?.change ?? obj?.pct_change);
+      if (!precio) throw new Error('sin precio en respuesta ambito');
+      return { precio, variacion, fuente: 'ambito' };
+    },
+    // Fallback: Rava Bursátil (también público)
+    async () => {
+      const r = await fetch(`https://www.rava.com/perfil/cotizacion.php?e=${sym}&json=1`, {
+        headers: { 'Referer': 'https://www.rava.com/', 'Accept': 'application/json' }
+      });
+      if (!r.ok) throw new Error(`rava ${r.status}`);
+      const d = await r.json();
+      const precio = parseAR(d?.last ?? d?.price ?? d?.ultimo);
+      if (!precio) throw new Error('sin precio en respuesta rava');
+      return { precio, variacion: parseAR(d?.change ?? d?.variacion), fuente: 'rava' };
+    }
+  ];
 
-    const data = await response.json();
-
-    // Normalizar: ultimo puede venir como "53.925,00" (string con puntos y comas)
-    const parseAR = str => {
-      if (typeof str === 'number') return str;
-      if (!str) return null;
-      return parseFloat(str.toString().replace(/\./g, '').replace(',', '.'));
-    };
-
-    const precio = parseAR(data.ultimo || data.price || data.last);
-    const variacion = parseAR(data.variacion || data.variation || data.change);
-
-    if (!precio) throw new Error(`Sin precio para ${sym}`);
-
-    res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60');
-    res.status(200).json({ ticker: sym, precio, variacion, fuente: 'ambito' });
-
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+  for (const source of sources) {
+    try {
+      const result = await source();
+      res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60');
+      return res.status(200).json({ ticker: sym, ...result });
+    } catch (e) {
+      // Siguiente fuente
+    }
   }
+
+  res.status(500).json({ error: `Sin datos para ${sym} en ninguna fuente` });
 }
