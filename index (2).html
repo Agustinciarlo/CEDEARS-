@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CEDEAR Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --border: #2a2a40;
+    --accent1: #7c6dfa; --accent2: #00e5b0; --accent3: #ff5e7d; --accent4: #ffd166;
+    --text: #e8e8f0; --muted: #6e6e90; --green: #00e5b0; --red: #ff5e7d;
+    --font-head: 'Syne', sans-serif; --font-mono: 'DM Mono', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-mono); min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(124,109,250,0.04) 1px,transparent 1px), linear-gradient(90deg,rgba(124,109,250,0.04) 1px,transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .app { position: relative; z-index: 1; max-width: 1150px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 40px; flex-wrap: wrap; gap: 16px; }
+  .logo { font-family: var(--font-head); font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent2); }
+  .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ccl-widget { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; font-size: 13px; }
+  .ccl-badge { background: rgba(255,209,102,0.12); color: var(--accent4); font-size: 10px; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.5px; }
+  .ccl-input { background: transparent; border: none; outline: none; color: var(--accent4); font-family: var(--font-mono); font-size: 15px; font-weight: 500; width: 80px; text-align: right; }
+  .ccl-label { color: var(--muted); }
+  .refresh-ccl { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 0 2px; transition: color 0.2s; }
+  .refresh-ccl:hover { color: var(--accent4); }
+  .byma-status { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 7px 13px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); }
+  .byma-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .byma-dot.ok { background: var(--green); }
+  .byma-dot.loading { background: var(--accent4); animation: pulse 1s infinite; }
+  .byma-dot.err { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 14px; margin-bottom: 36px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; position: relative; overflow: hidden; transition: border-color 0.2s; }
+  .card:hover { border-color: var(--accent1); }
+  .card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--card-accent,var(--accent1)); border-radius:14px 14px 0 0; }
+  .card-label { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+  .card-value { font-family: var(--font-head); font-size: 26px; font-weight: 700; line-height: 1; }
+  .card-sub { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .up { color: var(--green); } .down { color: var(--red); }
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 4px; width: fit-content; }
+  .tab { font-family: var(--font-mono); font-size: 13px; padding: 8px 18px; border-radius: 8px; border: none; background: transparent; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .tab.active { background: var(--accent1); color: #fff; }
+  .section { display: none; } .section.active { display: block; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
+  .section-title { font-family: var(--font-head); font-size: 18px; font-weight: 700; }
+  .btn { font-family: var(--font-mono); font-size: 13px; padding: 9px 18px; border-radius: 8px; border: 1px solid; cursor: pointer; transition: all 0.15s; }
+  .btn-primary { background: var(--accent1); border-color: var(--accent1); color: #fff; }
+  .btn-primary:hover { background: #9280ff; }
+  .btn-ghost { background: transparent; border-color: var(--border); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--accent1); color: var(--accent1); }
+  .btn-danger { background: transparent; border-color: var(--red); color: var(--red); font-size: 11px; padding: 4px 10px; }
+  .btn-danger:hover { background: rgba(255,94,125,0.1); }
+  .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: var(--surface2); padding: 12px 14px; text-align: left; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); white-space: nowrap; border-bottom: 1px solid var(--border); }
+  tbody tr { border-bottom: 1px solid rgba(42,42,64,0.6); transition: background 0.15s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody td { padding: 13px 14px; vertical-align: middle; }
+  .ticker-badge { display: inline-block; background: rgba(124,109,250,0.15); color: var(--accent1); padding: 3px 8px; border-radius: 5px; font-size: 12px; font-weight: 500; letter-spacing: 0.5px; }
+  .pct-badge { display: inline-block; padding: 3px 8px; border-radius: 5px; font-size: 12px; font-weight: 500; }
+  .pct-up { background: rgba(0,229,176,0.12); color: var(--green); }
+  .pct-down { background: rgba(255,94,125,0.12); color: var(--red); }
+  .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 24px; }
+  .form-title { font-family: var(--font-head); font-size: 15px; font-weight: 700; margin-bottom: 18px; color: var(--accent2); }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; }
+  .form-group input, .form-group select { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; color: var(--text); font-family: var(--font-mono); font-size: 13px; outline: none; transition: border-color 0.2s; }
+  .form-group input:focus, .form-group select:focus { border-color: var(--accent1); }
+  .form-group select option { background: var(--surface2); }
+  .form-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .mkt-add-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+  .mkt-add-row .form-group { flex: 1; min-width: 120px; }
+  .spark-empty { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+  .update-msg { font-size: 11px; color: var(--muted); margin-top: 4px; text-align: right; }
+  @media (max-width: 600px) {
+    .summary-grid { grid-template-columns: 1fr 1fr; }
+    .form-grid { grid-template-columns: 1fr 1fr; }
+    .card-value { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">CEDEAR<span>.</span>track</div>
+    <div class="header-right">
+      <div class="byma-status">
+        <div class="byma-dot" id="byma-dot"></div>
+        <span id="byma-label">BYMA</span>
+      </div>
+      <div class="ccl-widget">
+        <span class="ccl-badge">CCL</span>
+        <span class="ccl-label">$</span>
+        <input class="ccl-input" type="number" id="ccl" value="1398" step="1" min="1">
+        <span class="ccl-label">ARS/USD</span>
+        <button class="refresh-ccl" onclick="fetchCCL()" title="Actualizar CCL desde Bluelytics">↻</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Summary -->
+  <div class="summary-grid">
+    <div class="card" style="--card-accent:#7c6dfa">
+      <div class="card-label">Valor actual</div>
+      <div class="card-value" id="s-valor">—</div>
+      <div class="card-sub">USD al CCL actual</div>
+    </div>
+    <div class="card" style="--card-accent:#00e5b0">
+      <div class="card-label">Invertido</div>
+      <div class="card-value" id="s-invertido">—</div>
+      <div class="card-sub">USD al CCL de compra</div>
+    </div>
+    <div class="card" style="--card-accent:#ffd166">
+      <div class="card-label">Ganancia real USD</div>
+      <div class="card-value" id="s-ganancia">—</div>
+      <div class="card-sub" id="s-rend">—</div>
+    </div>
+    <div class="card" style="--card-accent:#ff5e7d">
+      <div class="card-label">Posiciones</div>
+      <div class="card-value" id="s-pos">—</div>
+      <div class="card-sub">activos en cartera</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('cartera',this)">Cartera</button>
+    <button class="tab" onclick="showTab('compras',this)">Compras</button>
+    <button class="tab" onclick="showTab('mercado',this)">Mercado</button>
+  </div>
+
+  <!-- CARTERA -->
+  <div class="section active" id="tab-cartera">
+    <div class="section-head"><div class="section-title">Posiciones activas</div></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Ticker</th><th>Empresa</th><th>Cantidad</th>
+          <th>Costo prom. ARS</th><th>Invertido USD</th>
+          <th>Precio USD hoy</th><th>Valor actual USD</th>
+          <th>Ganancia USD</th><th>Rend. %</th>
+        </tr></thead>
+        <tbody id="cartera-body"><tr><td colspan="9" class="spark-empty">Cargá compras para ver tu cartera</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- COMPRAS -->
+  <div class="section" id="tab-compras">
+    <div class="form-card">
+      <div class="form-title">+ Registrar compra</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Ticker</label>
+          <select id="f-ticker"><option value="">— seleccioná —</option></select></div>
+        <div class="form-group"><label>Fecha</label><input type="date" id="f-fecha"></div>
+        <div class="form-group"><label>Cantidad</label><input type="number" id="f-qty" placeholder="ej: 3" min="1"></div>
+        <div class="form-group"><label>Precio unit. ARS</label><input type="number" id="f-precio-ars" placeholder="ej: 49620"></div>
+        <div class="form-group"><label>Comisión total ARS</label><input type="number" id="f-comision" placeholder="ej: 1026"></div>
+        <div class="form-group"><label>CCL al comprar</label><input type="number" id="f-ccl-compra" placeholder="ej: 1433"></div>
+        <div class="form-group"><label>Broker</label><input type="text" id="f-broker" value="IOL"></div>
+        <div class="form-group"><label>Nota (opcional)</label><input type="text" id="f-nota" placeholder=""></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="addCompra()">Guardar compra</button>
+        <button class="btn btn-ghost" onclick="clearForm()">Limpiar</button>
+      </div>
+    </div>
+    <div class="section-head"><div class="section-title">Historial de compras</div></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Fecha</th><th>Ticker</th><th>Cantidad</th>
+          <th>Precio ARS/u</th><th>Precio USD/u</th>
+          <th>Comisión ARS</th><th>CCL compra</th>
+          <th>Total ARS</th><th>Total USD</th>
+          <th>Broker</th><th></th>
+        </tr></thead>
+        <tbody id="compras-body"><tr><td colspan="11" class="spark-empty">No hay compras registradas</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- MERCADO -->
+  <div class="section" id="tab-mercado">
+    <div class="form-card">
+      <div class="form-title">+ Agregar activo</div>
+      <div class="mkt-add-row">
+        <div class="form-group"><label>Ticker CEDEAR</label><input type="text" id="m-ticker" placeholder="ej: SPY"></div>
+        <div class="form-group"><label>Empresa</label><input type="text" id="m-empresa" placeholder="ej: SPDR S&P 500 ETF"></div>
+        <div class="form-group"><label>Ratio CEDEAR/Acción</label><input type="number" id="m-ratio" placeholder="ej: 20" min="1"></div>
+        <button class="btn btn-primary" onclick="addActivo()" style="align-self:flex-end">Agregar</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted)">Precio ARS se trae de BYMA Open Data (sin login). También podés editarlo a mano.</p>
+    </div>
+    <div class="section-head">
+      <div class="section-title">Activos en seguimiento</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <button class="btn btn-ghost" id="refresh-btn" onclick="refreshPrecios()">↻ Actualizar precios BYMA</button>
+        <span class="update-msg" id="update-msg"></span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Ticker</th><th>Empresa</th><th>Ratio</th>
+          <th>Precio CEDEAR ARS</th><th>Precio CEDEAR USD</th><th>Var. día %</th><th></th>
+        </tr></thead>
+        <tbody id="mercado-body"><tr><td colspan="7" class="spark-empty">Agregá activos para empezar</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Estado ────────────────────────────────────────────────────────────────────
+let state = { ccl: 1398, mercado: [], compras: [] };
+
+function loadSampleData() {
+  state.mercado = [
+    { ticker:'SPY',  empresa:'SPDR S&P 500 ETF Trust', ratio:20, precioCEDEAR_ARS:null, varDia:null },
+    { ticker:'AAPL', empresa:'Apple Inc.',              ratio:10, precioCEDEAR_ARS:null, varDia:null },
+    { ticker:'MSFT', empresa:'Microsoft Corp.',         ratio:10, precioCEDEAR_ARS:null, varDia:null }
+  ];
+  state.compras = [
+    { id:1, fecha:'2026-03-05', ticker:'SPY', qty:3, precioARS:49620, comision:1026.42, cclCompra:1433, broker:'IOL', nota:'' },
+    { id:2, fecha:'2026-04-10', ticker:'SPY', qty:3, precioARS:50525, comision:886.11,  cclCompra:1398, broker:'IOL', nota:'' }
+  ];
+  save();
+}
+
+function save() { try { localStorage.setItem('ct_state', JSON.stringify(state)); } catch(e){} }
+function load() {
+  try {
+    const d = localStorage.getItem('ct_state');
+    if (d) {
+      const p = JSON.parse(d);
+      // migrate old format
+      if (p.mercado) p.mercado = p.mercado.map(m => ({
+        ticker: m.ticker, empresa: m.empresa, ratio: m.ratio||1,
+        precioCEDEAR_ARS: m.precioCEDEAR_ARS ?? null,
+        varDia: m.varDia ?? null
+      }));
+      state = p;
+    } else { loadSampleData(); }
+  } catch(e) { loadSampleData(); }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt  = (n,d=2) => (n===null||isNaN(n)||!isFinite(n)) ? '—' : n.toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fUSD = n => (n===null||isNaN(n)||!isFinite(n)) ? '—' : 'U$D '+fmt(n);
+const fARS = n => (n===null||isNaN(n)||!isFinite(n)) ? '—' : '$ '+fmt(n,0);
+const fDate= s => { if(!s) return ''; const p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; };
+const getMkt = t => state.mercado.find(m=>m.ticker===t);
+const cedearUSD = m => m.precioCEDEAR_ARS !== null ? m.precioCEDEAR_ARS / state.ccl : null;
+
+// ── BYMA Open Data ────────────────────────────────────────────────────────────
+// Endpoint público sin auth — devuelve todos los CEDEARs de una vez
+const BYMA_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cedears';
+
+let bymaCache = null; // cache para evitar múltiples requests
+
+async function fetchBYMA() {
+  if (bymaCache) return bymaCache;
+  const res = await fetch(BYMA_URL);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const json = await res.json();
+  // La respuesta es un array de objetos con: symbol, trade, pctChange, etc.
+  const map = {};
+  const arr = Array.isArray(json) ? json : (json.data || json.content || []);
+  arr.forEach(item => {
+    const sym = (item.symbol || item.ticker || '').replace(/\s/g,'');
+    if (sym) map[sym] = item;
+  });
+  bymaCache = map;
+  return map;
+}
+
+function setBYMAStatus(state, label) {
+  document.getElementById('byma-dot').className = 'byma-dot' + (state==='ok' ? ' ok' : state==='loading' ? ' loading' : state==='err' ? ' err' : '');
+  document.getElementById('byma-label').textContent = label;
+}
+
+async function refreshPrecios() {
+  const btn = document.getElementById('refresh-btn');
+  btn.textContent = '⟳ Actualizando...';
+  btn.disabled = true;
+  setBYMAStatus('loading', 'BYMA...');
+  bymaCache = null; // forzar refresh
+  try {
+    const data = await fetchBYMA();
+    let actualizados = 0;
+    state.mercado.forEach(m => {
+      const row = data[m.ticker] || data[m.ticker + 'D'] || null;
+      if (row) {
+        // BYMA usa 'trade' o 'last' para el último precio
+        const precio = row.trade ?? row.last ?? row.price ?? null;
+        const var_dia = row.pctChange ?? row.change ?? null;
+        if (precio !== null) {
+          m.precioCEDEAR_ARS = parseFloat(precio);
+          m.varDia = var_dia !== null ? parseFloat(var_dia) : null;
+          actualizados++;
+        }
+      }
+    });
+    save();
+    const now = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('update-msg').textContent = `${actualizados}/${state.mercado.length} actualizados · ${now}`;
+    setBYMAStatus('ok', 'BYMA');
+  } catch(e) {
+    document.getElementById('update-msg').textContent = 'Error: ' + e.message;
+    setBYMAStatus('err', 'Sin datos');
+  }
+  btn.textContent = '↻ Actualizar precios BYMA';
+  btn.disabled = false;
+  renderAll();
+}
+
+// ── Bluelytics CCL ───────────────────────────────────────────────────────────
+async function fetchCCL() {
+  const btn = document.querySelector('.refresh-ccl');
+  btn.style.animation = 'pulse 0.5s infinite';
+  try {
+    const res = await fetch('https://api.bluelytics.com.ar/v2/latest');
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    // Bluelytics devuelve blue.value_sell como mejor proxy del CCL
+    const ccl = data.blue?.value_sell ?? data.oficial_euro?.value_sell ?? null;
+    if (ccl) {
+      state.ccl = ccl;
+      document.getElementById('ccl').value = ccl;
+      // Recalcular USD de activos que tienen precio ARS
+      state.mercado.forEach(m => { /* precioCEDEAR_ARS no cambia, USD se deriva */ });
+      save(); renderAll();
+    }
+  } catch(e) {
+    console.warn('Bluelytics error:', e.message);
+  }
+  btn.style.animation = '';
+}
+
+// ── Cartera ───────────────────────────────────────────────────────────────────
+function buildCartera() {
+  const byTicker = {};
+  state.compras.forEach(c => {
+    if (!byTicker[c.ticker]) byTicker[c.ticker] = { ticker:c.ticker, compras:[] };
+    byTicker[c.ticker].compras.push(c);
+  });
+  return Object.values(byTicker).map(pos => {
+    const m = getMkt(pos.ticker);
+    const qty      = pos.compras.reduce((s,c) => s+c.qty, 0);
+    const totalARS = pos.compras.reduce((s,c) => s+(c.qty*c.precioARS+c.comision), 0);
+    const costoProm = qty > 0 ? totalARS/qty : 0;
+    const invertidoUSD = pos.compras.reduce((s,c) => s+(c.qty*c.precioARS+c.comision)/c.cclCompra, 0);
+    const precioHoyUSD  = m ? cedearUSD(m) : null;
+    const valorActualUSD = precioHoyUSD !== null ? precioHoyUSD*qty : null;
+    const gananciaUSD    = valorActualUSD !== null ? valorActualUSD-invertidoUSD : null;
+    const rendPct        = gananciaUSD !== null && invertidoUSD > 0 ? (gananciaUSD/invertidoUSD)*100 : null;
+    return { ticker:pos.ticker, empresa: m?m.empresa:pos.ticker, qty, costoProm, invertidoUSD, precioHoyUSD, valorActualUSD, gananciaUSD, rendPct };
+  });
+}
+
+// ── Renders ───────────────────────────────────────────────────────────────────
+function renderCartera() {
+  const tbody = document.getElementById('cartera-body');
+  const cartera = buildCartera();
+  if (!cartera.length) { tbody.innerHTML = '<tr><td colspan="9" class="spark-empty">Cargá compras para ver tu cartera</td></tr>'; return; }
+  tbody.innerHTML = cartera.map(p => {
+    const up = p.rendPct !== null ? p.rendPct >= 0 : null;
+    return `<tr>
+      <td><span class="ticker-badge">${p.ticker}</span></td>
+      <td style="color:var(--muted);font-size:12px">${p.empresa}</td>
+      <td>${p.qty}</td>
+      <td>${fARS(p.costoProm)}</td>
+      <td>${fUSD(p.invertidoUSD)}</td>
+      <td>${p.precioHoyUSD!==null ? fUSD(p.precioHoyUSD) : '<span style="color:var(--muted)">actualizar BYMA ↗</span>'}</td>
+      <td>${fUSD(p.valorActualUSD)}</td>
+      <td class="${up!==null?(up?'up':'down'):''}">${p.gananciaUSD!==null?(p.gananciaUSD>=0?'+':'')+fUSD(p.gananciaUSD):'—'}</td>
+      <td>${p.rendPct!==null?`<span class="pct-badge ${up?'pct-up':'pct-down'}">${up?'+':''}${fmt(p.rendPct,2)}%</span>`:'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderCompras() {
+  const tbody = document.getElementById('compras-body');
+  if (!state.compras.length) { tbody.innerHTML = '<tr><td colspan="11" class="spark-empty">No hay compras registradas</td></tr>'; return; }
+  tbody.innerHTML = state.compras.map(c => {
+    const totalARS  = c.qty*c.precioARS + c.comision;
+    const totalUSD  = totalARS / c.cclCompra;
+    // Precio USD unitario del CEDEAR al momento de la compra
+    const precioUSDunit = c.precioARS / c.cclCompra;
+    return `<tr>
+      <td>${fDate(c.fecha)}</td>
+      <td><span class="ticker-badge">${c.ticker}</span></td>
+      <td>${c.qty}</td>
+      <td>${fARS(c.precioARS)}</td>
+      <td style="color:var(--accent2)">${fUSD(precioUSDunit)}</td>
+      <td>${fARS(c.comision)}</td>
+      <td>${fmt(c.cclCompra,0)}</td>
+      <td>${fARS(totalARS)}</td>
+      <td>${fUSD(totalUSD)}</td>
+      <td style="color:var(--muted)">${c.broker||''}</td>
+      <td><button class="btn btn-danger" onclick="deleteCompra(${c.id})">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderMercado() {
+  const tbody = document.getElementById('mercado-body');
+  if (!state.mercado.length) { tbody.innerHTML = '<tr><td colspan="7" class="spark-empty">Agregá activos para empezar</td></tr>'; return; }
+  tbody.innerHTML = state.mercado.map((m,i) => {
+    const usd = cedearUSD(m);
+    const sin = m.precioCEDEAR_ARS === null;
+    const vd  = m.varDia;
+    return `<tr>
+      <td><span class="ticker-badge">${m.ticker}</span></td>
+      <td style="color:var(--muted);font-size:12px">${m.empresa}</td>
+      <td>${m.ratio}:1</td>
+      <td>
+        <input type="number" value="${sin?'':m.precioCEDEAR_ARS.toFixed(2)}" step="0.01" placeholder="Precio ARS"
+          style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--accent2);font-family:var(--font-mono);font-size:13px;width:130px;outline:none"
+          onchange="updatePrecioARS(${i},this.value)">
+      </td>
+      <td>${sin?'<span style="color:var(--muted)">—</span>':fUSD(usd)}</td>
+      <td>${vd!==null?`<span class="pct-badge ${vd>=0?'pct-up':'pct-down'}">${vd>=0?'+':''}${fmt(vd,2)}%</span>`:'—'}</td>
+      <td><button class="btn btn-danger" onclick="deleteActivo(${i})">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSummary() {
+  const cartera = buildCartera();
+  const valorTotal    = cartera.reduce((s,p) => s+(p.valorActualUSD||0), 0);
+  const invertidoTotal= cartera.reduce((s,p) => s+(p.invertidoUSD||0), 0);
+  const gananciaTotal = valorTotal - invertidoTotal;
+  const rendTotal     = invertidoTotal>0 ? (gananciaTotal/invertidoTotal)*100 : 0;
+  document.getElementById('s-valor').textContent     = invertidoTotal>0 ? fUSD(valorTotal)     : '—';
+  document.getElementById('s-invertido').textContent = invertidoTotal>0 ? fUSD(invertidoTotal) : '—';
+  const gEl = document.getElementById('s-ganancia');
+  gEl.textContent  = invertidoTotal>0 ? (gananciaTotal>=0?'+':'')+fUSD(gananciaTotal) : '—';
+  gEl.className    = 'card-value '+(gananciaTotal>=0?'up':'down');
+  document.getElementById('s-rend').textContent = invertidoTotal>0 ? (rendTotal>=0?'+':'')+fmt(rendTotal,2)+'% rendimiento real' : '—';
+  document.getElementById('s-pos').textContent  = cartera.length || '0';
+}
+
+function renderAll() { renderCartera(); renderCompras(); renderMercado(); renderSummary(); updateTickerSelect(); }
+
+function updateTickerSelect() {
+  const sel = document.getElementById('f-ticker');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— seleccioná —</option>' +
+    state.mercado.map(m=>`<option value="${m.ticker}" ${m.ticker===cur?'selected':''}>${m.ticker} — ${m.empresa}</option>`).join('');
+}
+
+// ── Acciones ──────────────────────────────────────────────────────────────────
+function showTab(name, btn) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function addActivo() {
+  const t = document.getElementById('m-ticker').value.trim().toUpperCase();
+  const e = document.getElementById('m-empresa').value.trim();
+  const r = parseFloat(document.getElementById('m-ratio').value);
+  if (!t||!e||!r) { alert('Completá ticker, empresa y ratio'); return; }
+  if (state.mercado.find(m=>m.ticker===t)) { alert('Ese ticker ya existe'); return; }
+  state.mercado.push({ ticker:t, empresa:e, ratio:r, precioCEDEAR_ARS:null, varDia:null });
+  save(); renderAll();
+  ['m-ticker','m-empresa','m-ratio'].forEach(id=>document.getElementById(id).value='');
+}
+
+function deleteActivo(i) {
+  if (!confirm('¿Eliminar '+state.mercado[i].ticker+'?')) return;
+  state.mercado.splice(i,1); save(); renderAll();
+}
+
+function updatePrecioARS(i, val) {
+  const v = parseFloat(val);
+  state.mercado[i].precioCEDEAR_ARS = isNaN(v) ? null : v;
+  save(); renderCartera(); renderSummary();
+}
+
+function addCompra() {
+  const ticker   = document.getElementById('f-ticker').value;
+  const fecha    = document.getElementById('f-fecha').value;
+  const qty      = parseFloat(document.getElementById('f-qty').value);
+  const precioARS= parseFloat(document.getElementById('f-precio-ars').value);
+  const comision = parseFloat(document.getElementById('f-comision').value)||0;
+  const cclCompra= parseFloat(document.getElementById('f-ccl-compra').value);
+  const broker   = document.getElementById('f-broker').value.trim();
+  const nota     = document.getElementById('f-nota').value.trim();
+  if (!ticker||!fecha||!qty||!precioARS||!cclCompra) { alert('Completá los campos obligatorios'); return; }
+  state.compras.push({ id:Date.now(), fecha, ticker, qty, precioARS, comision, cclCompra, broker, nota });
+  save(); renderAll(); clearForm();
+}
+
+function clearForm() {
+  ['f-fecha','f-qty','f-precio-ars','f-comision','f-ccl-compra','f-nota'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-ticker').value='';
+  document.getElementById('f-broker').value='IOL';
+}
+
+function deleteCompra(id) {
+  if (!confirm('¿Eliminar esta compra?')) return;
+  state.compras=state.compras.filter(c=>c.id!==id); save(); renderAll();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.getElementById('ccl').addEventListener('input', function() {
+  state.ccl = parseFloat(this.value)||1;
+  save(); renderAll();
+});
+document.getElementById('f-fecha').valueAsDate = new Date();
+
+load();
+renderAll();
+
+// Auto-fetch CCL al cargar
+fetchCCL();
+// Auto-fetch precios BYMA al cargar (sin bloquear)
+refreshPrecios();
+</script>
+</body>
+</html>
