@@ -206,7 +206,7 @@
     <div class="section-head">
       <div class="section-title">Activos en seguimiento</div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        <button class="btn btn-ghost" id="refresh-btn" onclick="refreshPrecios()">↻ Actualizar precios BYMA</button>
+        <button class="btn btn-ghost" id="refresh-btn" onclick="refreshPrecios()">↻ Actualizar precios</button>
         <span class="update-msg" id="update-msg"></span>
       </div>
     </div>
@@ -265,65 +265,48 @@ const fDate= s => { if(!s) return ''; const p=s.split('-'); return p[2]+'/'+p[1]
 const getMkt = t => state.mercado.find(m=>m.ticker===t);
 const cedearUSD = m => m.precioCEDEAR_ARS !== null ? m.precioCEDEAR_ARS / state.ccl : null;
 
-// ── BYMA Open Data ────────────────────────────────────────────────────────────
-// Endpoint público sin auth — devuelve todos los CEDEARs de una vez
-const BYMA_URL = '/api/byma'; // proxy Vercel — evita CORS/405
+// ── Ambito Financiero (via proxy Vercel) ─────────────────────────────────────
+// Un request por ticker: /api/byma?ticker=SPY
 
-let bymaCache = null; // cache para evitar múltiples requests
-
-async function fetchBYMA() {
-  if (bymaCache) return bymaCache;
-  const res = await fetch(BYMA_URL);
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const json = await res.json();
-  // La respuesta es un array de objetos con: symbol, trade, pctChange, etc.
-  const map = {};
-  const arr = Array.isArray(json) ? json : (json.data || json.content || json.Data || []);
-  arr.forEach(item => {
-    // symbol puede venir con espacios o con D al final (plazo)
-    const sym = (item.symbol || item.ticker || '').trim().replace(/D$/, '');
-    if (sym) map[sym] = item;
-  });
-  bymaCache = map;
-  return map;
+function setBYMAStatus(st, label) {
+  document.getElementById('byma-dot').className = 'byma-dot' + (st==='ok' ? ' ok' : st==='loading' ? ' loading' : st==='err' ? ' err' : '');
+  document.getElementById('byma-label').textContent = label;
 }
 
-function setBYMAStatus(state, label) {
-  document.getElementById('byma-dot').className = 'byma-dot' + (state==='ok' ? ' ok' : state==='loading' ? ' loading' : state==='err' ? ' err' : '');
-  document.getElementById('byma-label').textContent = label;
+async function fetchCotizacion(ticker) {
+  const res = await fetch(`/api/byma?ticker=${ticker}`);
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'HTTP ' + res.status);
+  return json; // { ticker, precio, variacion }
 }
 
 async function refreshPrecios() {
   const btn = document.getElementById('refresh-btn');
   btn.textContent = '⟳ Actualizando...';
   btn.disabled = true;
-  setBYMAStatus('loading', 'BYMA...');
-  bymaCache = null; // forzar refresh
-  try {
-    const data = await fetchBYMA();
-    let actualizados = 0;
-    state.mercado.forEach(m => {
-      const row = data[m.ticker] || data[m.ticker + 'D'] || null;
-      if (row) {
-        // BYMA usa 'trade' o 'last' para el último precio
-        const precio = row.trade ?? row.last ?? row.price ?? null;
-        const var_dia = row.pctChange ?? row.change ?? null;
-        if (precio !== null) {
-          m.precioCEDEAR_ARS = parseFloat(precio);
-          m.varDia = var_dia !== null ? parseFloat(var_dia) : null;
-          actualizados++;
-        }
-      }
-    });
-    save();
-    const now = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-    document.getElementById('update-msg').textContent = `${actualizados}/${state.mercado.length} actualizados · ${now}`;
-    setBYMAStatus('ok', 'BYMA');
-  } catch(e) {
-    document.getElementById('update-msg').textContent = 'Error: ' + e.message;
-    setBYMAStatus('err', 'Sin datos');
+  setBYMAStatus('loading', 'Ambito...');
+  let actualizados = 0;
+  const errores = [];
+  for (const m of state.mercado) {
+    try {
+      const data = await fetchCotizacion(m.ticker);
+      m.precioCEDEAR_ARS = data.precio;
+      m.varDia = data.variacion ?? null;
+      actualizados++;
+    } catch(e) {
+      errores.push(m.ticker);
+    }
   }
-  btn.textContent = '↻ Actualizar precios BYMA';
+  save();
+  const now = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  if (errores.length) {
+    document.getElementById('update-msg').textContent = `${actualizados} ok · Sin datos: ${errores.join(', ')} · ${now}`;
+    setBYMAStatus(actualizados > 0 ? 'ok' : 'err', 'Ambito');
+  } else {
+    document.getElementById('update-msg').textContent = `${actualizados}/${state.mercado.length} actualizados · ${now}`;
+    setBYMAStatus('ok', 'Ambito ✓');
+  }
+  btn.textContent = '↻ Actualizar precios';
   btn.disabled = false;
   renderAll();
 }
@@ -531,7 +514,7 @@ renderAll();
 
 // Auto-fetch CCL al cargar
 fetchCCL();
-// Auto-fetch precios BYMA al cargar (sin bloquear)
+// Auto-fetch precios al cargar
 refreshPrecios();
 </script>
 </body>
